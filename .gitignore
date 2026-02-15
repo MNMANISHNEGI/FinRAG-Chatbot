@@ -1,0 +1,16 @@
+.venv
+.env
+__pycache__/
+*.pyc
+Pipfile.lock
+uv.lock
+.idea/
+.DS_Store
+*.log
+*.sqlite3
+*.db
+*.bak
+tempCodeRunnerFile.py
+.python-version
+vectorstore/
+data/
