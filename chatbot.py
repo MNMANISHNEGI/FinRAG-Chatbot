@@ -77,12 +77,15 @@ Analysis:"""
         try: 
             vectorstore = get_vectorstore()
             
+            groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
+
             qa_chain = RetrievalQA.from_chain_type(
-            llm=ChatGroq(
-                model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
-                temperature=0.2,
-                groq_api_key=st.secrets["GROQ_API_KEY"],
-            ),
+                llm=ChatGroq(
+                    model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
+                    temperature=0.2,
+                    groq_api_key=groq_api_key,
+                ),
+
             chain_type="stuff",
             retriever=vectorstore.as_retriever(search_kwargs={'k': 6}),
             return_source_documents=True,
