@@ -8,7 +8,10 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 
-load_dotenv(find_dotenv())
+from dotenv import load_dotenv, find_dotenv
+
+if os.path.exists(".env"):
+    load_dotenv(find_dotenv())
 
 DB_FAISS_PATH = "vectorstore/db_faiss"
 
