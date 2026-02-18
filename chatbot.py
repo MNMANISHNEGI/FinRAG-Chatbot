@@ -75,16 +75,17 @@ Analysis:"""
             vectorstore = get_vectorstore()
             
             qa_chain = RetrievalQA.from_chain_type(
-                llm=ChatGroq(
-                    model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
-                    temperature=0.2,
-                    groq_api_key=os.environ["GROQ_API_KEY"],
-                ),
-                chain_type="stuff",
-                retriever=vectorstore.as_retriever(search_kwargs={'k': 6}),
-                return_source_documents=True,
-                chain_type_kwargs={'prompt': set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)}
-            )
+            llm=ChatGroq(
+                model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
+                temperature=0.2,
+                groq_api_key=st.secrets["GROQ_API_KEY"],
+            ),
+            chain_type="stuff",
+            retriever=vectorstore.as_retriever(search_kwargs={'k': 6}),
+            return_source_documents=True,
+            chain_type_kwargs={'prompt': set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)}
+        )
+
 
             response = qa_chain.invoke({'query': prompt})
             result = response["result"]
