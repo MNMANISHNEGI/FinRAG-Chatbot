@@ -83,19 +83,34 @@ Analysis:"""
                 st.error("GROQ_API_KEY not found. Please check your .env or Streamlit secrets.")
                 st.stop()
 
-            qa_chain = RetrievalQA.from_chain_type(
-                llm=ChatGroq(
-                    model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
-                    temperature=0.2,
-                    groq_api_key=groq_api_key,
-                ),
-                chain_type="stuff",
-                retriever=vectorstore.as_retriever(search_kwargs={'k': 6}),
-                return_source_documents=True,
-                chain_type_kwargs={'prompt': set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)}
+            
+            from langchain_core.runnables import RunnablePassthrough
+            from langchain_core.output_parsers import StrOutputParser
+            
+            retriever = vectorstore.as_retriever(search_kwargs={'k': 6})
+            
+            llm = ChatGroq(
+                model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
+                temperature=0.2,
+                groq_api_key=groq_api_key,
             )
+            
+            prompt_template = set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)
+            
+            rag_chain = (
+                {
+                    "context": retriever,
+                    "question": RunnablePassthrough(),
+                }
+                | prompt_template
+                | llm
+                | StrOutputParser()
+            )
+            
+            result = rag_chain.invoke(prompt)
 
-            response = qa_chain.invoke({'query': prompt})
+
+            
 
             result = response["result"]
             source_documents = response["source_documents"]
