@@ -1,125 +1,169 @@
 import os
+import traceback
 import streamlit as st
 from dotenv import load_dotenv, find_dotenv
 
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.chains import RetrievalQA
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
 
-from dotenv import load_dotenv, find_dotenv
-
+# -------------------------------------------------------------------
+# ENV LOADING (local development only)
+# -------------------------------------------------------------------
 if os.path.exists(".env"):
     load_dotenv(find_dotenv())
 
+# -------------------------------------------------------------------
+# APP CONFIG
+# -------------------------------------------------------------------
+st.set_page_config(
+    page_title="FinBot | Financial Intelligence Assistant",
+    page_icon="📊",
+    layout="centered"
+)
+
+# -------------------------------------------------------------------
+# CONSTANTS
+# -------------------------------------------------------------------
 DB_FAISS_PATH = "vectorstore/db_faiss"
 
+CUSTOM_PROMPT_TEMPLATE = """
+You are a Senior Equity Research Analyst.
+
+Your task is to answer financial questions using ONLY the provided 10-K report context.
+
+Guidelines:
+- If numeric data is requested, carefully read table columns.
+- Financial tables typically follow:
+  [Item Name] [2025 Value] [2024 Value] [2023 Value]
+- Clearly state if the requested year is missing.
+- Do NOT hallucinate.
+- Be concise, professional, and structured.
+
+Context:
+{context}
+
+Question:
+{question}
+
+Answer:
+"""
+
+# -------------------------------------------------------------------
+# VECTORSTORE LOADER
+# -------------------------------------------------------------------
 @st.cache_resource
-def get_vectorstore():
-    embedding_model = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
-    db = FAISS.load_local(DB_FAISS_PATH, embedding_model, allow_dangerous_deserialization=True)
-    return db
+def load_vectorstore():
+    if not os.path.exists(DB_FAISS_PATH):
+        st.error(f"FAISS index not found at: {DB_FAISS_PATH}")
+        st.stop()
 
-def set_custom_prompt(custom_prompt_template):
-    prompt = PromptTemplate(template=custom_prompt_template, input_variables=["context", "question"])
-    return prompt
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2"
+    )
 
+    return FAISS.load_local(
+        DB_FAISS_PATH,
+        embeddings,
+        allow_dangerous_deserialization=True
+    )
+
+# -------------------------------------------------------------------
+# LLM LOADER
+# -------------------------------------------------------------------
+def load_llm():
+    groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
+
+    if not groq_api_key:
+        st.error("GROQ_API_KEY not found. Please configure Streamlit secrets.")
+        st.stop()
+
+    return ChatGroq(
+        model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
+        temperature=0.2,
+        groq_api_key=groq_api_key,
+    )
+
+# -------------------------------------------------------------------
+# DOCUMENT FORMATTER
+# -------------------------------------------------------------------
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+# -------------------------------------------------------------------
+# BUILD RAG CHAIN
+# -------------------------------------------------------------------
+def build_rag_chain(vectorstore, llm):
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
+
+    prompt = PromptTemplate(
+        template=CUSTOM_PROMPT_TEMPLATE,
+        input_variables=["context", "question"]
+    )
+
+    rag_chain = (
+        {
+            "context": retriever | format_docs,
+            "question": RunnablePassthrough(),
+        }
+        | prompt
+        | llm
+        | StrOutputParser()
+    )
+
+    return rag_chain
+
+# -------------------------------------------------------------------
+# MAIN UI
+# -------------------------------------------------------------------
 def main():
-    st.set_page_config(page_title="finBot Assistance")
-    st.title("finBot: fincal Information Portal")
+    st.title("📊 FinBot")
+    st.caption("AI-Powered Financial Report Assistant")
 
-    if 'messages' not in st.session_state:
+    if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    # Display previous messages
     for message in st.session_state.messages:
-        with st.chat_message(message['role']):
-            st.markdown(message['content'])
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
 
-    prompt = st.chat_input("Ask a fincal question...")
+    user_input = st.chat_input("Ask a financial question from the 10-K report...")
 
-    if prompt:
-        st.chat_message('user').markdown(prompt)
-        st.session_state.messages.append({'role': 'user', 'content': prompt})
-        CUSTOM_PROMPT_TEMPLATE = """
-ROLE: Senior Equity Research Analyst for NVIDIA.
-TASK: Extract specific data from the 2025 10-K Annual Report.
+    if user_input:
+        # Display user message
+        st.chat_message("user").markdown(user_input)
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_input
+        })
 
-REASONING FRAMEWORK:
-1. Identify if the query is a numeric request (e.g., Revenue, Cash Flow) or qualitative (e.g., Risks).
-2. For numeric requests:
-   - Financial tables in 10-Ks are ordered as: [Item Name] [2025 Value] [2024 Value] [2023 Value].
-   - Locate the exact row for the requested item.
-   - Count the columns carefully: 2025 is the 1st value, 2024 is the 2nd, and 2023 is the 3rd.
-3. If you do not see three columns of data, look for a header starting with 'Three Years Ended'.
-
-CONSTRAINTS:
-- Use only the provided context.
-- Citation: Include the Page Number from the metadata.
-- If data is missing for a specific year, state it clearly.
-
-Context: {context}
-Question: {question}
-
-Analysis:"""
-
-# Detailed Financial Analysis:"""
-#         CUSTOM_PROMPT_TEMPLATE = """
-#         Use the provided fincal context to answer the user's question.
-#         If the answer is not in the context, clearly state that the information is not available in the provided document.
-#         Keep the answer professional, structured, and easy to understand.
-
-#         Context: {context}
-#         Question: {question}
-
-#         Answer:"""
         try:
-            vectorstore = get_vectorstore()
-        
-            groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
-        
-            if not groq_api_key:
-                st.error("GROQ_API_KEY not found. Please check your .env or Streamlit secrets.")
-                st.stop()
-            from langchain_core.runnables import RunnablePassthrough
-            from langchain_core.output_parsers import StrOutputParser
-            from langchain_core.documents import Document
-            
-            def format_docs(docs):
-                return "\n\n".join(doc.page_content for doc in docs)
-            
-            retriever = vectorstore.as_retriever(search_kwargs={'k': 6})
-            
-            llm = ChatGroq(
-                model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
-                temperature=0.2,
-                groq_api_key=groq_api_key,
-            )
-            
-            prompt_template = set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)
-            
-            rag_chain = (
-                {
-                    "context": retriever | format_docs,
-                    "question": RunnablePassthrough(),
-                }
-                | prompt_template
-                | llm
-                | StrOutputParser()
-            )
-            
-            result = rag_chain.invoke(prompt)
+            with st.spinner("Analyzing financial report..."):
+                vectorstore = load_vectorstore()
+                llm = load_llm()
+                rag_chain = build_rag_chain(vectorstore, llm)
 
-        
-            with st.chat_message('assistant'):
-                st.markdown(result)
-        
-            st.session_state.messages.append({'role': 'assistant', 'content': result})
-        
-        except Exception as e:
-            st.error(f"Error: {str(e)}")
+                response = rag_chain.invoke(user_input)
 
-       
+            # Display assistant response
+            with st.chat_message("assistant"):
+                st.markdown(response)
 
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response
+            })
+
+        except Exception:
+            st.error("An unexpected error occurred:")
+            st.code(traceback.format_exc())
+
+# -------------------------------------------------------------------
+# ENTRY POINT
+# -------------------------------------------------------------------
 if __name__ == "__main__":
     main()
