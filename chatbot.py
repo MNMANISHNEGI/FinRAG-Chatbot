@@ -81,31 +81,35 @@ Analysis:"""
             if not groq_api_key:
                 st.error("GROQ_API_KEY not found. Please check your .env or Streamlit secrets.")
                 st.stop()
-        
             from langchain_core.runnables import RunnablePassthrough
             from langchain_core.output_parsers import StrOutputParser
-        
+            from langchain_core.documents import Document
+            
+            def format_docs(docs):
+                return "\n\n".join(doc.page_content for doc in docs)
+            
             retriever = vectorstore.as_retriever(search_kwargs={'k': 6})
-        
+            
             llm = ChatGroq(
                 model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
                 temperature=0.2,
                 groq_api_key=groq_api_key,
             )
-        
+            
             prompt_template = set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)
-        
+            
             rag_chain = (
                 {
-                    "context": retriever,
+                    "context": retriever | format_docs,
                     "question": RunnablePassthrough(),
                 }
                 | prompt_template
                 | llm
                 | StrOutputParser()
             )
-        
+            
             result = rag_chain.invoke(prompt)
+
         
             with st.chat_message('assistant'):
                 st.markdown(result)
