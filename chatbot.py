@@ -73,30 +73,28 @@ Analysis:"""
 #         Question: {question}
 
 #         Answer:"""
-  
-        try:
+          try:
             vectorstore = get_vectorstore()
-
+        
             groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
-
+        
             if not groq_api_key:
                 st.error("GROQ_API_KEY not found. Please check your .env or Streamlit secrets.")
                 st.stop()
-
-            
+        
             from langchain_core.runnables import RunnablePassthrough
             from langchain_core.output_parsers import StrOutputParser
-            
+        
             retriever = vectorstore.as_retriever(search_kwargs={'k': 6})
-            
+        
             llm = ChatGroq(
                 model_name="meta-llama/llama-4-maverick-17b-128e-instruct",
                 temperature=0.2,
                 groq_api_key=groq_api_key,
             )
-            
+        
             prompt_template = set_custom_prompt(CUSTOM_PROMPT_TEMPLATE)
-            
+        
             rag_chain = (
                 {
                     "context": retriever,
@@ -106,32 +104,18 @@ Analysis:"""
                 | llm
                 | StrOutputParser()
             )
-            
+        
             result = rag_chain.invoke(prompt)
-
-
-            
-
-            result = response["result"]
-            source_documents = response["source_documents"]
-
+        
             with st.chat_message('assistant'):
-                # Display the primary fincal answer
                 st.markdown(result)
-                
-                # Professional alignment of sources
-                with st.expander("Reference Sources"):
-                    for i, doc in enumerate(source_documents):
-                        source_file = doc.metadata.get('source', 'Unknown')
-                        page_num = doc.metadata.get('page', 'N/A')
-                        st.markdown(f"**Document {i+1}:** {os.path.basename(source_file)} (Page {page_num})")
-                        st.caption(doc.page_content)
-                        st.divider()
-
+        
             st.session_state.messages.append({'role': 'assistant', 'content': result})
-
+        
         except Exception as e:
             st.error(f"Error: {str(e)}")
+
+       
 
 if __name__ == "__main__":
     main()
