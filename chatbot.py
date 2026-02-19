@@ -73,7 +73,7 @@ Analysis:"""
 #         Question: {question}
 
 #         Answer:"""
-          try:
+        try:
             vectorstore = get_vectorstore()
         
             groq_api_key = st.secrets.get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
